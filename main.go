@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -13,6 +14,8 @@ import (
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
+	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4"
 	"github.com/spf13/cobra"
 )
@@ -115,6 +118,55 @@ func doSnappyDecode(buf []byte) ([]byte, error) {
 	return snappy.Decode(dst, buf)
 }
 
+var encoder, _ = zstd.NewWriter(nil)
+
+func doZSTDEncode(data []byte, level int) ([]byte, error) {
+	buf := encoder.EncodeAll(data, make([]byte, 0, len(data)))
+	return buf, nil
+}
+
+func doZSTDDecode(buf []byte) ([]byte, error) {
+	d, err := zstd.NewReader(bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	dst := &bytes.Buffer{}
+	defer d.Close()
+
+	_, err = io.Copy(dst, d)
+	if err != nil {
+		return nil, err
+	}
+	d.Close()
+	return dst.Bytes(), nil
+}
+
+func doS2Encode(data []byte, level int) ([]byte, error) {
+	dst := &bytes.Buffer{}
+	enc := s2.NewWriter(dst)
+	err := enc.EncodeBuffer(data)
+	if err != nil {
+		enc.Close()
+		return nil, err
+	}
+	// Blocks until compression is done.
+	err = enc.Close()
+	if err != nil {
+		return nil, err
+	}
+	return dst.Bytes(), nil
+}
+
+func doS2Decode(buf []byte) ([]byte, error) {
+	dec := s2.NewReader(bytes.NewReader(buf))
+	dst := &bytes.Buffer{}
+	_, err := io.Copy(dst, dec)
+	if err != nil {
+		return nil, err
+	}
+	return dst.Bytes(), nil
+}
+
 func main() {
 
 	count := 100
@@ -178,6 +230,16 @@ func main() {
 			Name:       "snappy",
 			Compress:   doSnappyEncode,
 			Decompress: doSnappyDecode,
+		},
+		{
+			Name:       "s2",
+			Compress:   doS2Encode,
+			Decompress: doS2Decode,
+		},
+		{
+			Name:       "zstd",
+			Compress:   doZSTDEncode,
+			Decompress: doZSTDDecode,
 		},
 	}
 	err := rootCmd.Execute()
