@@ -88,7 +88,7 @@ func doBrDecode(buf []byte) ([]byte, error) {
 }
 
 func doLZ4Encode(data []byte, level int) ([]byte, error) {
-	buf := make([]byte, len(data))
+	buf := make([]byte, lz4.CompressBlockBound(len(data)))
 	n, err := lz4.CompressBlock(data, buf, nil)
 	if err != nil {
 		return nil, err
@@ -98,6 +98,7 @@ func doLZ4Encode(data []byte, level int) ([]byte, error) {
 }
 
 func doLZ4Decode(buf []byte) ([]byte, error) {
+	// 直接选择10倍大小
 	dst := make([]byte, 10*len(buf))
 	n, err := lz4.UncompressBlock(buf, dst)
 	if err != nil {
